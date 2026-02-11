@@ -37,7 +37,25 @@ model EmailSchedule {
   id            String   @id @default(uuid())
   shop          String   @unique
   email         String
-  scheduleTime  String   // "08:30"
   isEnabled     Boolean  @default(true)
-  createdAt     DateTime @default(now())
+
+  frequency     String
+  repeatEvery   Int      @default(1)
+
+  runDays       String?  
+
+  monthlyType   String?  
+  specificDate  Int?      
+
+  dayPattern    String?   
+  weekPattern   String?
+
+  lastRunAt     DateTime?
+  nextRunAt     DateTime?   
+
+  scheduleTime  String
+
+  createdAt     DateTime  @default(now())
 }
+
+

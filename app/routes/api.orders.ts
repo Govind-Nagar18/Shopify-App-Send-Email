@@ -1,15 +1,33 @@
-import type { LoaderFunctionArgs } from "react-router";
-import { shopifyback , authenticate } from "../shopify.server";
+import { LoaderFunctionArgs } from "react-router";
+import { authenticate, shopifyback } from "../shopify.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
+  const url = new URL(request.url);
+
+  const start = url.searchParams.get("start");
+  const end = url.searchParams.get("end");
 
   const client = new shopifyback.clients.Rest({ session });
 
+  const query: Record<string, string | number> = {
+    status: "any",
+    limit: 50,
+  };
+
+  if (start) {
+    query.created_at_min = start;
+  }
+
+  if (end) {
+    query.created_at_max = end;
+  }
+
   const response = await client.get({
     path: "orders",
-    query: { limit: 10 },
+    query,
   });
 
   return Response.json(response.body.orders);
 };
+

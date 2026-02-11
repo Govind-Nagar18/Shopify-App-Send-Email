@@ -13,18 +13,26 @@ const transporter = nodemailer.createTransport({
 export async function sendOrdersEmail(
   to: string,
   shop: string,
-  excelBuffer: Buffer
+  excelBuffer: Buffer | null,
 ) {
-  await transporter.sendMail({
+  const mailOptions: nodemailer.SendMailOptions = {
     from: `"Shopify Orders" <${process.env.EMAIL_USER}>`,
     to,
-    subject: `Daily Orders Report - ${shop}`,
-    text: "Attached is your scheduled daily orders report.",
-    attachments: [
+    subject: `Orders Report - ${shop}`,
+    text: excelBuffer
+      ? "Attached is your scheduled orders report."
+      : "No orders found for this period.",
+  };
+
+  // Only add attachment if file exists
+  if (excelBuffer) {
+    mailOptions.attachments = [
       {
         filename: "orders.xlsx",
         content: excelBuffer,
       },
-    ],
-  });
+    ];
+  }
+
+  await transporter.sendMail(mailOptions);
 }
