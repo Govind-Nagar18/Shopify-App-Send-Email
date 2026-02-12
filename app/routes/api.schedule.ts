@@ -17,6 +17,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     specificDate,
     dayPattern,
     weekPattern,
+    orderFilter
   } = requestBody;
 
   const now = new Date();
@@ -101,7 +102,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       if (next <= now) {
         next.setDate(next.getDate() + Number(repeatEvery));
       }
-
       return next;
     }
 
@@ -172,7 +172,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         next.setMonth(next.getMonth() + Number(repeatEvery));
       }
     }
-
     return null;
   }
 
@@ -184,6 +183,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       email: shopEmail,
       isEnabled: enabled,
       frequency,
+      orderFilter,
       repeatEvery: Number(repeatEvery),
       runDays: runDays?.length ? JSON.stringify(runDays) : null,
       monthlyType: frequency === "monthly" ? monthlyType : null,
@@ -207,6 +207,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       email: shopEmail,
       isEnabled: enabled,
       frequency,
+      orderFilter,
       repeatEvery: Number(repeatEvery),
       runDays: runDays?.length ? JSON.stringify(runDays) : null,
       monthlyType,

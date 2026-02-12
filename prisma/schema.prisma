@@ -50,6 +50,8 @@ model EmailSchedule {
   dayPattern    String?   
   weekPattern   String?
 
+  orderFilter   String  @default("all")
+
   lastRunAt     DateTime?
   nextRunAt     DateTime?   
 

@@ -7,6 +7,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   const start = url.searchParams.get("start");
   const end = url.searchParams.get("end");
+  const filter = url.searchParams.get("filter") ?? "all";
 
   const client = new shopifyback.clients.Rest({ session });
 
@@ -23,6 +24,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     query.created_at_max = end;
   }
 
+  if (filter === "fulfilled") {
+    query.fulfillment_status = "fulfilled";
+  }
+
+  if (filter === "unfulfilled") {
+    query.fulfillment_status = "unfulfilled";
+  }
+
   const response = await client.get({
     path: "orders",
     query,
@@ -30,4 +39,3 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   return Response.json(response.body.orders);
 };
-

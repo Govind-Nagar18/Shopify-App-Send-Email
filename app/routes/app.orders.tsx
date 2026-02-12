@@ -86,7 +86,6 @@ export default function OrdersPage() {
   const [frequency, setFrequency] = useState("daily");
 
   const [monthlyType, setMonthlyType] = useState<"date" | "weekday">("date");
-
   const [specificDate, setSpecificDate] = useState("1");
 
   const [dayPattern, setDayPattern] = useState("First");
@@ -95,25 +94,79 @@ export default function OrdersPage() {
   const [repeatEvery, setRepeatEvery] = useState("1");
   const [runDay, setRunDay] = useState<string>("Mon");
 
-  const [scheduleTime, setScheduleTime] = useState("");
+  const [scheduleTime, setScheduleTime] = useState("10:00");
   const [loading, setLoading] = useState(true);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
-
   const [orders, setOrders] = useState<Order[]>([]);
+
+  const [saving, setSaving] = useState(false);
+  const [orderFilter, setOrderFilter] = useState<
+    "all" | "fulfilled" | "unfulfilled"
+  >("all");
+
   useEffect(() => {
-    if (!schedule) return;
+    if (!schedule) {
+      setOrders([]);
+      setLoading(false);
+      return;
+    }
 
     const range = getDateRangeFromSchedule(schedule);
-    if (!range) return;
+    if (!range) {
+      setLoading(false);
+      return;
+    }
 
-    fetch(`/api/orders?start=${range.start}&end=${range.end}`)
+    setLoading(true);
+
+    const params = new URLSearchParams({
+      start: range.start,
+      end: range.end,
+      filter: schedule?.orderFilter,
+    });
+
+    fetch(`/api/orders?${params.toString()}`)
       .then((res) => res.json())
-      .then((data) => {
-        setOrders(data);
-        setLoading(false);
-      });
+      .then(setOrders)
+      .finally(() => setLoading(false));
   }, [schedule]);
+
+  function renderScheduleSummary(schedule: any) {
+    if (!schedule) return <Text as="p">No schedule configured</Text>;
+
+    switch (schedule.frequency) {
+      case "daily":
+        return (
+          <Text as="p">
+            Runs daily at {schedule.scheduleTime || "--"} (24hr)
+          </Text>
+        );
+
+      case "weekly": {
+        const day = schedule.runDays ? JSON.parse(schedule.runDays)[0] : "--";
+        return <Text as="p">Runs weekly on {day}</Text>;
+      }
+
+      case "monthly":
+        if (schedule.monthlyType === "date") {
+          return <Text as="p">Runs monthly on: {schedule.nextRunAt}</Text>;
+        }
+
+        if (schedule.monthlyType === "weekday") {
+          return (
+            <Text as="p">
+              Runs monthly on {schedule.dayPattern} {schedule.weekPattern}
+            </Text>
+          );
+        }
+
+        return <Text as="p">Runs monthly</Text>;
+
+      default:
+        return <Text as="p">Schedule not configured</Text>;
+    }
+  }
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
@@ -160,14 +213,13 @@ export default function OrdersPage() {
         style={{
           display: "grid",
           gridTemplateColumns: "320px 1fr",
-          gap: 20,
-          marginTop: 20,
+          gap: 15,
         }}
       >
         {/* LEFT PANEL */}
         <div style={{ width: 320 }}>
           <Card>
-            <div style={{ padding: 16 }}>
+            <div style={{ padding: 10 }}>
               <Text variant="headingSm" as="h3">
                 Schedule summary
               </Text>
@@ -175,14 +227,12 @@ export default function OrdersPage() {
               <div
                 style={{
                   background: "#F1F2F4",
-                  padding: 12,
+                  padding: 8,
                   borderRadius: 8,
-                  marginTop: 8,
+                  marginTop: 5,
                 }}
               >
-                <Text as="p">
-                  Runs every {schedule?.scheduleTime || "--:--"}
-                </Text>
+                {renderScheduleSummary(schedule)}
               </div>
             </div>
           </Card>
@@ -219,7 +269,7 @@ export default function OrdersPage() {
                 <TextField
                   label="Run time"
                   type="time"
-                  value={scheduleTime}
+                  value={scheduleTime || "--:--"}
                   error={errors.scheduleTime}
                   onChange={setScheduleTime}
                   autoComplete="off"
@@ -329,32 +379,54 @@ export default function OrdersPage() {
                   )}
                 </div>
               )}
+              <div style={{ marginTop: 16 }}>
+                <ChoiceList
+                  title="Order status"
+                  choices={[
+                    { label: "All orders", value: "all" },
+                    { label: "Fulfilled only", value: "fulfilled" },
+                    { label: "Unfulfilled only", value: "unfulfilled" },
+                  ]}
+                  selected={[orderFilter]}
+                  onChange={(value) =>
+                    setOrderFilter(
+                      value[0] as "all" | "fulfilled" | "unfulfilled",
+                    )
+                  }
+                />
+              </div>
 
               <div style={{ marginTop: 20 }}>
                 <Button
                   fullWidth
                   variant="primary"
+                  disabled={saving}
                   onClick={async () => {
                     if (!validateForm()) return;
-
-                    await fetch("/api/schedule", {
-                      method: "POST",
-                      headers: {
-                        "Content-Type": "application/json",
-                      },
-                      body: JSON.stringify({
-                        enabled,
-                        frequency,
-                        scheduleTime,
-                        repeatEvery,
-                        runDays: runDay ? [runDay] : [],
-                        monthlyType,
-                        specificDate,
-                        dayPattern,
-                        weekPattern,
-                      }),
-                    });
-                    revalidator.revalidate();
+                    setSaving(true);
+                    try {
+                      await fetch("/api/schedule", {
+                        method: "POST",
+                        headers: {
+                          "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify({
+                          enabled,
+                          frequency,
+                          scheduleTime,
+                          repeatEvery,
+                          runDays: runDay ? [runDay] : [],
+                          monthlyType,
+                          orderFilter,
+                          specificDate,
+                          dayPattern,
+                          weekPattern,
+                        }),
+                      });
+                      revalidator.revalidate();
+                    } finally {
+                      setSaving(false);
+                    }
                   }}
                 >
                   Save Schedule
@@ -367,11 +439,10 @@ export default function OrdersPage() {
         {/* RIGHT PANEL */}
         <div style={{ flex: 1 }}>
           <Card>
-            <div style={{ padding: 16 }}>
-              <Text variant="headingMd" as="h2">
+            <div style={{ padding: 8 }}>
+              <Text variant="headingMd" as="h3">
                 Scheduled Reports
               </Text>
-
               {schedule ? (
                 <IndexTable
                   resourceName={{ singular: "report", plural: "reports" }}
@@ -386,7 +457,7 @@ export default function OrdersPage() {
                   ]}
                 >
                   <IndexTable.Row id="1" position={0}>
-                    <IndexTable.Cell>Orders</IndexTable.Cell>
+                    <IndexTable.Cell>Orders ({orders.length})</IndexTable.Cell>
 
                     <IndexTable.Cell>
                       {schedule.frequency?.toUpperCase()}
@@ -422,6 +493,12 @@ export default function OrdersPage() {
           <br />
 
           <Card>
+            {!schedule && (
+              <Text as="h1" tone="subdued">
+                Create a schedule to view filtered orders.
+              </Text>
+            )}
+
             {loading ? (
               <div
                 style={{

@@ -17,14 +17,46 @@ export async function runScheduler() {
   });
 
   function getDateRange(schedule: EmailSchedule) {
-    const startDate = schedule.lastRunAt
-      ? new Date(schedule.lastRunAt)
-      : new Date(schedule.createdAt);
+    const now = new Date();
+    let startDate: Date;
+
+    if (schedule.frequency === "daily") {
+      startDate = new Date(now);
+      startDate.setHours(0, 0, 0, 0);
+    } else if (schedule.frequency === "weekly") {
+      startDate = new Date(now);
+      startDate.setDate(now.getDate() - 7);
+    } else if (schedule.frequency === "monthly") {
+      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    } else {
+      startDate = new Date(now);
+    }
 
     return {
       created_at_min: startDate.toISOString(),
-      created_at_max: new Date().toISOString(),
+      created_at_max: now.toISOString(),
     };
+  }
+
+  function buildOrderQuery(
+    schedule: EmailSchedule,
+    dateRange: { created_at_min: string; created_at_max: string },
+  ) {
+    const query: Record<string, string> = {
+      status: "any",
+      created_at_min: dateRange.created_at_min,
+      created_at_max: dateRange.created_at_max,
+    };
+
+    if (schedule.orderFilter === "fulfilled") {
+      query.fulfillment_status = "fulfilled";
+    }
+
+    if (schedule.orderFilter === "unfulfilled") {
+      query.fulfillment_status = "unfulfilled";
+    }
+
+    return query;
   }
 
   function calculateNextRun(schedule: EmailSchedule): Date | null {
@@ -99,54 +131,40 @@ export async function runScheduler() {
   }
 
   for (const schedule of schedules) {
-    if (!schedule.nextRunAt) continue;
+    const nextRun = calculateNextRun(schedule);
 
-    try {
-      const session = await sessionStorage.loadSession(
-        `offline_${schedule.shop}`,
-      );
+    const locked = await prisma.emailSchedule.updateMany({
+      where: {
+        id: schedule.id,
+        nextRunAt: { lte: now },
+      },
+      data: {
+        lastRunAt: now,
+        nextRunAt: nextRun,
+      },
+    });
 
-      if (!session) continue;
+    if (locked.count === 0) continue;
 
-      const client = new shopifyback.clients.Rest({ session });
+    const session = await sessionStorage.loadSession(
+      `offline_${schedule.shop}`,
+    );
+    if (!session) continue;
 
-      const { created_at_min, created_at_max } =
-        getDateRange(schedule);
+    const client = new shopifyback.clients.Rest({ session });
+    const dateRange = getDateRange(schedule);
 
-      const ordersResponse = await client.get({
-        path: "orders",
-        query: {
-          status: "any",
-          created_at_min,
-          created_at_max,
-        },
-      });
+    const ordersResponse = await client.get({
+      path: "orders",
+      query: buildOrderQuery(schedule, dateRange),
+    });
 
-      const orders = ordersResponse.body.orders;
+    const orders = ordersResponse.body.orders;
 
-      let excelBuffer: Buffer | null = null;
+    const excelBuffer =
+      orders.length > 0 ? await generateOrdersExcel(orders) : null;
 
-      if (orders.length) {
-        excelBuffer = await generateOrdersExcel(orders);
-      }
-
-      await sendOrdersEmail(schedule.email, schedule.shop, excelBuffer);
-
-      const nextRun = calculateNextRun(schedule);
-
-      await prisma.emailSchedule.update({
-        where: { id: schedule.id },
-        data: {
-          lastRunAt: new Date(),
-          nextRunAt: nextRun,
-        },
-      });
-
-      console.log("Schedule completed:", schedule.shop);
-
-    } catch (error) {
-      console.error("Scheduler failed:", schedule.shop, error);
-    }
+    await sendOrdersEmail(schedule.email, schedule.shop, excelBuffer);
   }
 
   return schedules;
