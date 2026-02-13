@@ -51,9 +51,13 @@ model EmailSchedule {
   weekPattern   String?
 
   orderFilter   String  @default("all")
-  paymentStatus String?     
+  paymentStatus String? 
+  minOrderValue   Int?
+  minItems        Int?
+  orderTags       String?   
+  customerTags    String?   
 
-  lastRunAt     DateTime?
+  lastRunAt     DateTime?  
   nextRunAt     DateTime?   
 
   scheduleTime  String

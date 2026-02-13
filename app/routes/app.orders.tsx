@@ -26,6 +26,13 @@ interface LineItem {
   quantity: number;
   price: string;
 }
+
+interface Customer {
+  first_name?: string;
+  last_name?: string;
+  tags?: string;
+}
+
 interface Order {
   id: number;
   name: string;
@@ -33,10 +40,8 @@ interface Order {
   current_total_price: string;
   financial_status: string;
   fulfillment_status: string | null;
-  customer?: {
-    first_name?: string;
-    last_name?: string;
-  };
+  tags?: string;
+  customer?: Customer;
   line_items: LineItem[];
 }
 
@@ -98,6 +103,7 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(true);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [rawOrders, setRawOrders] = useState<Order[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
 
   const [saving, setSaving] = useState(false);
@@ -108,6 +114,50 @@ export default function OrdersPage() {
   const [paymentStatus, setPaymentStatus] = useState<
     "all" | "paid" | "pending"
   >("all");
+  const [minPrice, setMinPrice] = useState<number | null>(null);
+  const [minItem, setMinItem] = useState<number | null>(null);
+
+  const [orderTags, setOrderTags] = useState<string[]>([]);
+  const [customerTags, setCustomerTags] = useState<string[]>([]);
+
+  function CheckOrder(order:Order[]){
+    console.log("check Order function is running...");
+    console.log("all Orders : ", order[0]);
+  }
+
+  CheckOrder(rawOrders)
+
+  function applyClientFilters(orders: Order[], schedule: any): Order[] {
+    let result = [...orders];
+
+    if (schedule.minOrderValue) {
+      result = result.filter(
+        (o) => Number(o.current_total_price) >= schedule.minOrderValue,
+      );
+    }
+
+    if (schedule.minItems) {
+      result = result.filter((o) => o.line_items.length >= schedule.minItems);
+    }
+
+    if (schedule.orderTags?.length) {
+      result = result.filter((o) =>
+        o.tags
+          ?.split(",")
+          .some((tag: string) => schedule.orderTags.includes(tag.trim())),
+      );
+    }
+
+    if (schedule.customerTags?.length) {
+      result = result.filter((o) =>
+        o.customer?.tags
+          ?.split(",")
+          .some((tag: string) => schedule.customerTags.includes(tag.trim())),
+      );
+    }
+
+    return result;
+  }
 
   useEffect(() => {
     if (!schedule) {
@@ -127,15 +177,23 @@ export default function OrdersPage() {
     const params = new URLSearchParams({
       start: range.start,
       end: range.end,
-      filter: schedule?.orderFilter,
-      payment: schedule?.paymentStatus,
+      filter: schedule.orderFilter,
+      payment: schedule.paymentStatus,
     });
 
     fetch(`/api/orders?${params.toString()}`)
       .then((res) => res.json())
-      .then(setOrders)
+      .then((data: Order[]) => {
+        setRawOrders(data);
+
+        const filtered = enableFilter
+          ? applyClientFilters(data, schedule)
+          : data;
+
+        setOrders(filtered);
+      })
       .finally(() => setLoading(false));
-  }, [schedule]);
+  }, [schedule, enableFilter]);
 
   function renderScheduleSummary(schedule: any) {
     if (!schedule) return <Text as="p">No schedule configured</Text>;
@@ -433,6 +491,60 @@ export default function OrdersPage() {
                       }
                     />
                   </div>
+                  <div style={{ marginTop: 16 }}>
+                    <ChoiceList
+                      title="Min Order Value"
+                      choices={[
+                        { label: "$10,000+", value: "10000" },
+                        { label: "$5,000+", value: "5000" },
+                        { label: "$3,000+", value: "3000" },
+                        { label: "$2,000+", value: "2000" },
+                      ]}
+                      selected={minPrice ? [String(minPrice)] : []}
+                      onChange={(value) => setMinPrice(Number(value[0]))}
+                    />
+                  </div>
+                  <div style={{ marginTop: 16 }}>
+                    <ChoiceList
+                      title="Min Items"
+                      choices={[
+                        { label: "10+", value: "10" },
+                        { label: "7+", value: "7" },
+                        { label: "5+", value: "5" },
+                        { label: "3+", value: "3" },
+                        { label: "1+", value: "1" },
+                      ]}
+                      selected={minItem ? [String(minItem)] : []}
+                      onChange={(value) => setMinItem(Number(value[0]))}
+                    />
+                  </div>
+                  <div style={{ marginTop: 16 }}>
+                    <ChoiceList
+                      title="Order Tags"
+                      allowMultiple
+                      choices={[
+                        { label: "Wear", value: "wear" },
+                        { label: "Fashion", value: "fashion" },
+                        { label: "Style", value: "style" },
+                        { label: "Regular", value: "regular" },
+                      ]}
+                      selected={orderTags}
+                      onChange={setOrderTags}
+                    />
+                  </div>
+                  <div style={{ marginTop: 16 }}>
+                    <ChoiceList
+                      title="Customer Tags"
+                      allowMultiple
+                      choices={[
+                        { label: "VIP", value: "vip" },
+                        { label: "Wholesale", value: "wholesale" },
+                        { label: "Regular", value: "regular" },
+                      ]}
+                      selected={customerTags}
+                      onChange={setCustomerTags}
+                    />
+                  </div>
                 </div>
               )}
             </div>
@@ -460,6 +572,10 @@ export default function OrdersPage() {
                       monthlyType,
                       orderFilter,
                       paymentStatus,
+                      minOrderValue: minPrice,
+                      minItems: minItem,
+                      orderTags,
+                      customerTags,
                       specificDate,
                       dayPattern,
                       weekPattern,
@@ -551,7 +667,7 @@ export default function OrdersPage() {
                   </div>
                 ) : (
                   <div>
-                    {orders.length === 0 ? (
+                    {rawOrders.length === 0 ? (
                       <div>No Any Orders Found For this Period or Filter</div>
                     ) : (
                       <IndexTable
@@ -568,7 +684,7 @@ export default function OrdersPage() {
                           { title: "Items" },
                         ]}
                       >
-                        {orders.map((order, index) => (
+                        {rawOrders.map((order, index) => (
                           <IndexTable.Row
                             id={String(order.id)}
                             key={order.id}

@@ -19,6 +19,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     weekPattern,
     orderFilter,
     paymentStatus,
+    minOrderValue,
+    minItems,
+    orderTags,
+    customerTags,
   } = requestBody;
 
   const now = new Date();
@@ -186,6 +190,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       frequency,
       orderFilter,
       paymentStatus,
+      minOrderValue,
+      minItems,
+      orderTags: orderTags?.length ? JSON.stringify(orderTags) : null,
+
+      customerTags: customerTags?.length ? JSON.stringify(customerTags) : null,
+
       repeatEvery: Number(repeatEvery),
       runDays: runDays?.length ? JSON.stringify(runDays) : null,
       monthlyType: frequency === "monthly" ? monthlyType : null,
@@ -211,6 +221,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       frequency,
       orderFilter,
       paymentStatus,
+      minOrderValue,
+      minItems,
+      orderTags: orderTags?.length ? JSON.stringify(orderTags) : null,
+      customerTags: customerTags?.length ? JSON.stringify(customerTags) : null,
       repeatEvery: Number(repeatEvery),
       runDays: runDays?.length ? JSON.stringify(runDays) : null,
       monthlyType,
