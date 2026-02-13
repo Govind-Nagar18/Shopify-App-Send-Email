@@ -6,19 +6,11 @@ import {
   Text,
   Badge,
   Button,
-  TextField,
   Spinner,
-  Select,
-  Checkbox,
-  ChoiceList,
 } from "@shopify/polaris";
 import prisma from "../db.server";
 import { authenticate } from "../shopify.server";
-import {
-  LoaderFunctionArgs,
-  useLoaderData,
-  useRevalidator,
-} from "react-router";
+import { LoaderFunctionArgs, useLoaderData, useNavigate } from "react-router";
 
 interface LineItem {
   id: number;
@@ -26,6 +18,17 @@ interface LineItem {
   quantity: number;
   price: string;
 }
+
+interface Customer {
+  first_name?: string;
+  last_name?: string;
+  tags?: string;
+}
+
+interface ShippingLine {
+  title: string;
+}
+
 interface Order {
   id: number;
   name: string;
@@ -33,10 +36,9 @@ interface Order {
   current_total_price: string;
   financial_status: string;
   fulfillment_status: string | null;
-  customer?: {
-    first_name?: string;
-    last_name?: string;
-  };
+  tags?: string;
+  shipping_lines?: ShippingLine[];
+  customer?: Customer;
   line_items: LineItem[];
 }
 
@@ -53,10 +55,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export default function OrdersPage() {
-  const revalidator = useRevalidator();
   const { schedule } = useLoaderData() as {
     schedule: any;
   };
+
+  const navigate = useNavigate();
 
   function getDateRangeFromSchedule(schedule: any) {
     if (!schedule) return null;
@@ -82,32 +85,51 @@ export default function OrdersPage() {
     };
   }
 
-  const [enabled, setEnabled] = useState(true);
-  const [frequency, setFrequency] = useState("daily");
 
-  const [monthlyType, setMonthlyType] = useState<"date" | "weekday">("date");
-  const [specificDate, setSpecificDate] = useState("1");
 
-  const [dayPattern, setDayPattern] = useState("First");
-  const [weekPattern, setWeekPattern] = useState("Sunday");
 
-  const [repeatEvery, setRepeatEvery] = useState("1");
-  const [runDay, setRunDay] = useState<string>("Mon");
 
-  const [scheduleTime, setScheduleTime] = useState("10:00");
+
+
+
   const [loading, setLoading] = useState(true);
 
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [rawOrders, setRawOrders] = useState<Order[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
 
-  const [saving, setSaving] = useState(false);
   const [enableFilter, setEnableFilter] = useState(false);
-  const [orderFilter, setOrderFilter] = useState<
-    "all" | "fulfilled" | "unfulfilled"
-  >("all");
-  const [paymentStatus, setPaymentStatus] = useState<
-    "all" | "paid" | "pending"
-  >("all");
+
+  function applyClientFilters(orders: Order[], schedule: any): Order[] {
+    let result = [...orders];
+
+    if (schedule.minOrderValue) {
+      result = result.filter(
+        (o) => Number(o.current_total_price) >= schedule.minOrderValue,
+      );
+    }
+
+    if (schedule.minItems) {
+      result = result.filter((o) => o.line_items.length >= schedule.minItems);
+    }
+
+    if (schedule.orderTags?.length) {
+      result = result.filter((o) =>
+        o.tags
+          ?.split(",")
+          .some((tag: string) => schedule.orderTags.includes(tag.trim())),
+      );
+    }
+
+    if (schedule.customerTags?.length) {
+      result = result.filter((o) =>
+        o.customer?.tags
+          ?.split(",")
+          .some((tag: string) => schedule.customerTags.includes(tag.trim())),
+      );
+    }
+
+    return result;
+  }
 
   useEffect(() => {
     if (!schedule) {
@@ -127,355 +149,61 @@ export default function OrdersPage() {
     const params = new URLSearchParams({
       start: range.start,
       end: range.end,
-      filter: schedule?.orderFilter,
-      payment: schedule?.paymentStatus,
+      filter: schedule.orderFilter,
+      payment: schedule.paymentStatus,
     });
 
     fetch(`/api/orders?${params.toString()}`)
       .then((res) => res.json())
-      .then(setOrders)
+      .then((data: Order[]) => {
+        setRawOrders(data);
+
+        const filtered = enableFilter
+          ? applyClientFilters(data, schedule)
+          : data;
+
+        setOrders(filtered);
+      })
       .finally(() => setLoading(false));
-  }, [schedule]);
-
-  function renderScheduleSummary(schedule: any) {
-    if (!schedule) return <Text as="p">No schedule configured</Text>;
-
-    switch (schedule.frequency) {
-      case "daily":
-        return (
-          <Text as="p">
-            Runs daily at {schedule.scheduleTime || "--"} (24hr)
-          </Text>
-        );
-
-      case "weekly": {
-        const day = schedule.runDays ? JSON.parse(schedule.runDays)[0] : "--";
-        return <Text as="p">Runs weekly on {day}</Text>;
-      }
-
-      case "monthly":
-        if (schedule.monthlyType === "date") {
-          return <Text as="p">Runs monthly on: {schedule.nextRunAt}</Text>;
-        }
-
-        if (schedule.monthlyType === "weekday") {
-          return (
-            <Text as="p">
-              Runs monthly on {schedule.dayPattern} {schedule.weekPattern}
-            </Text>
-          );
-        }
-
-        return <Text as="p">Runs monthly</Text>;
-
-      default:
-        return <Text as="p">Schedule not configured</Text>;
-    }
-  }
-
-  const validateForm = () => {
-    const newErrors: Record<string, string> = {};
-
-    if (!scheduleTime) {
-      newErrors.scheduleTime = "Run time is required";
-    }
-
-    if (!repeatEvery || Number(repeatEvery) <= 0) {
-      newErrors.repeatEvery = "Repeat every must be greater than 0";
-    }
-
-    if (frequency === "monthly" && Number(repeatEvery) > 12) {
-      newErrors.repeatEvery = "Monthly repeat cannot exceed 12";
-    }
-
-    if (frequency === "weekly" && !runDay) {
-      newErrors.runDay = "Select a weekday";
-    }
-
-    if (frequency === "monthly") {
-      if (monthlyType === "date" && !specificDate) {
-        newErrors.specificDate = "Select a date";
-      }
-
-      if (monthlyType === "weekday") {
-        if (!dayPattern) {
-          newErrors.dayPattern = "Select day pattern";
-        }
-        if (!weekPattern) {
-          newErrors.weekPattern = "Select week pattern";
-        }
-      }
-    }
-
-    setErrors(newErrors);
-
-    return Object.keys(newErrors).length === 0;
-  };
+  }, [schedule, enableFilter]);
 
   return (
     <Page title="Orders">
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "320px 1fr",
-          gap: 15,
-        }}
-      >
-        {/* LEFT PANEL */}
-        <div style={{ width: 320 }}>
-          <Card>
-            <div style={{ padding: 10 }}>
-              <Text variant="headingSm" as="h3">
-                Schedule summary
-              </Text>
-
-              <div
-                style={{
-                  background: "#F1F2F4",
-                  padding: 8,
-                  borderRadius: 8,
-                  marginTop: 5,
-                }}
-              >
-                {renderScheduleSummary(schedule)}
-              </div>
-            </div>
-          </Card>
-          <br />
-
-          <Card>
-            <div style={{ padding: 16 }}>
+      <div style={{ marginBottom: 16 }}>
+        <Card>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 24,
+              padding: "8px 4px",
+            }}
+          >
+            {/* LEFT CONTENT */}
+            <div style={{ maxWidth: 720 }}>
               <Text variant="headingMd" as="h2">
-                Schedule Report
+                Scheduled order reports
               </Text>
 
-              <div style={{ marginTop: 16 }}>
-                <Checkbox
-                  label="Enable schedule"
-                  checked={enabled}
-                  onChange={setEnabled}
-                />
+              <div style={{ marginTop: 4 }}>
+                <Text as="p" tone="subdued">
+                  Automatically receive order reports by email based on your
+                  selected schedule and filters. Set it once and stay updated
+                  without manual exports.
+                </Text>
               </div>
-
-              <div style={{ marginTop: 16 }}>
-                <Select
-                  label="Repeat"
-                  options={[
-                    { label: "Daily", value: "daily" },
-                    { label: "Weekly", value: "weekly" },
-                    { label: "Monthly", value: "monthly" },
-                  ]}
-                  value={frequency}
-                  onChange={(value) => setFrequency(value)}
-                />
-              </div>
-
-              <div style={{ marginTop: 16 }}>
-                <TextField
-                  label="Run time"
-                  type="time"
-                  value={scheduleTime || "--:--"}
-                  error={errors.scheduleTime}
-                  onChange={setScheduleTime}
-                  autoComplete="off"
-                />
-              </div>
-
-              <div style={{ marginTop: 16 }}>
-                <TextField
-                  label="Repeat every"
-                  type="number"
-                  value={repeatEvery}
-                  error={errors.repeatEvery}
-                  onChange={setRepeatEvery}
-                  autoComplete="off"
-                />
-              </div>
-
-              {frequency === "weekly" && (
-                <div style={{ marginTop: 16 }}>
-                  <ChoiceList
-                    title="Run on"
-                    choices={[
-                      { label: "Sunday", value: "Sun" },
-                      { label: "Monday", value: "Mon" },
-                      { label: "Tuesday", value: "Tue" },
-                      { label: "Wednesday", value: "Wed" },
-                      { label: "Thursday", value: "Thu" },
-                      { label: "Friday", value: "Fri" },
-                      { label: "Saturday", value: "Sat" },
-                    ]}
-                    selected={[runDay]}
-                    onChange={(value) => setRunDay(value[0])}
-                  />
-                  {errors.runDay && (
-                    <Text as="p" tone="critical">
-                      {errors.runDay}
-                    </Text>
-                  )}
-                </div>
-              )}
-
-              {frequency === "monthly" && (
-                <div style={{ marginTop: 16 }}>
-                  <ChoiceList
-                    title="Monthly Type"
-                    choices={[
-                      { label: "On a specific date", value: "date" },
-                      { label: "On a weekday pattern", value: "weekday" },
-                    ]}
-                    selected={[monthlyType]}
-                    onChange={(value) =>
-                      setMonthlyType(value[0] as "date" | "weekday")
-                    }
-                  />
-
-                  {/* Specific Date */}
-                  {monthlyType === "date" && (
-                    <div style={{ marginTop: 12 }}>
-                      <Select
-                        label="Select Date"
-                        options={Array.from({ length: 31 }, (_, i) => ({
-                          label: `${i + 1}`,
-                          value: String(i + 1),
-                        }))}
-                        value={specificDate}
-                        error={errors.specificDate}
-                        onChange={setSpecificDate}
-                      />
-                    </div>
-                  )}
-
-                  {/* Weekday Pattern */}
-                  {monthlyType === "weekday" && (
-                    <div style={{ marginTop: 12 }}>
-                      <Select
-                        label="Day pattern"
-                        options={[
-                          { label: "First", value: "First" },
-                          { label: "Second", value: "Second" },
-                          { label: "Third", value: "Third" },
-                          { label: "Fourth", value: "Fourth" },
-                          { label: "Last", value: "Last" },
-                        ]}
-                        value={dayPattern}
-                        error={errors.dayPattern}
-                        onChange={setDayPattern}
-                      />
-
-                      <div style={{ marginTop: 12 }}>
-                        <Select
-                          label="Week pattern"
-                          options={[
-                            { label: "Sunday", value: "Sunday" },
-                            { label: "Monday", value: "Monday" },
-                            { label: "Tuesday", value: "Tuesday" },
-                            { label: "Wednesday", value: "Wednesday" },
-                            { label: "Thursday", value: "Thursday" },
-                            { label: "Friday", value: "Friday" },
-                            { label: "Saturday", value: "Saturday" },
-                          ]}
-                          value={weekPattern}
-                          error={errors.weekPattern}
-                          onChange={setWeekPattern}
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
-          </Card>
 
-          <Card>
-            <div style={{ padding: 5 }}>
-              <Text variant="headingMd" as="h2">
-                Orders Filter
-              </Text>
-
-              <div style={{ marginTop: 16 }}>
-                <Checkbox
-                  label="Enable Filter"
-                  checked={enableFilter}
-                  onChange={setEnableFilter}
-                />
-              </div>
-
-              {enableFilter && (
-                <div>
-                  <div style={{ marginTop: 16 }}>
-                    <ChoiceList
-                      title="Order status"
-                      choices={[
-                        { label: "All orders", value: "all" },
-                        { label: "Fulfilled only", value: "fulfilled" },
-                        { label: "Unfulfilled only", value: "unfulfilled" },
-                      ]}
-                      selected={[orderFilter]}
-                      onChange={(value) =>
-                        setOrderFilter(
-                          value[0] as "all" | "fulfilled" | "unfulfilled",
-                        )
-                      }
-                    />
-                  </div>
-                  <div style={{ marginTop: 16 }}>
-                    <ChoiceList
-                      title="Payment status"
-                      choices={[
-                        { label: "All Orders", value: "all" },
-                        { label: "Paid Only", value: "paid" },
-                        { label: "Pending Only", value: "pending" },
-                      ]}
-                      selected={[paymentStatus]}
-                      onChange={(value) =>
-                        setPaymentStatus(value[0] as "all" | "paid" | "pending")
-                      }
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-          </Card>
-          <div style={{ marginTop: 20, marginBottom: 20 }}>
-            <Button
-              fullWidth
-              variant="primary"
-              disabled={saving}
-              onClick={async () => {
-                if (!validateForm()) return;
-                setSaving(true);
-                try {
-                  await fetch("/api/schedule", {
-                    method: "POST",
-                    headers: {
-                      "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify({
-                      enabled,
-                      frequency,
-                      scheduleTime,
-                      repeatEvery,
-                      runDays: runDay ? [runDay] : [],
-                      monthlyType,
-                      orderFilter,
-                      paymentStatus,
-                      specificDate,
-                      dayPattern,
-                      weekPattern,
-                    }),
-                  });
-                  revalidator.revalidate();
-                } finally {
-                  setSaving(false);
-                }
-              }}
-            >
-              Save Schedule
+            {/* RIGHT CTA */}
+            <Button variant="primary" onClick={() => navigate("/app/temp")}>
+              Add schedule
             </Button>
           </div>
-        </div>
+        </Card>
+      </div>
 
+      <div>
         {/* RIGHT PANEL */}
         <div style={{ flex: 1 }}>
           <Card>
@@ -551,7 +279,7 @@ export default function OrdersPage() {
                   </div>
                 ) : (
                   <div>
-                    {orders.length === 0 ? (
+                    {rawOrders.length === 0 ? (
                       <div>No Any Orders Found For this Period or Filter</div>
                     ) : (
                       <IndexTable
@@ -566,9 +294,11 @@ export default function OrdersPage() {
                           { title: "Payment status" },
                           { title: "Fulfillment" },
                           { title: "Items" },
+                          { title: "Tags" },
+                          { title: "Delivery Method" },
                         ]}
                       >
-                        {orders.map((order, index) => (
+                        {rawOrders.map((order, index) => (
                           <IndexTable.Row
                             id={String(order.id)}
                             key={order.id}
@@ -612,6 +342,22 @@ export default function OrdersPage() {
 
                             <IndexTable.Cell>
                               {order.line_items.length} item
+                            </IndexTable.Cell>
+
+                            <IndexTable.Cell>
+                              {order.tags
+                                ? order.tags.split(",").map((tag) => (
+                                    <Badge key={tag} tone="info">
+                                      {tag.trim()}
+                                    </Badge>
+                                  ))
+                                : "-"}
+                            </IndexTable.Cell>
+
+                            <IndexTable.Cell>
+                              {order.shipping_lines?.length
+                                ? order.shipping_lines[0].title
+                                : "N/A"}
                             </IndexTable.Cell>
                           </IndexTable.Row>
                         ))}
