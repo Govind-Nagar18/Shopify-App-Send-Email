@@ -101,8 +101,12 @@ export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
 
   const [saving, setSaving] = useState(false);
+  const [enableFilter, setEnableFilter] = useState(false);
   const [orderFilter, setOrderFilter] = useState<
     "all" | "fulfilled" | "unfulfilled"
+  >("all");
+  const [paymentStatus, setPaymentStatus] = useState<
+    "all" | "paid" | "pending"
   >("all");
 
   useEffect(() => {
@@ -124,6 +128,7 @@ export default function OrdersPage() {
       start: range.start,
       end: range.end,
       filter: schedule?.orderFilter,
+      payment: schedule?.paymentStatus,
     });
 
     fetch(`/api/orders?${params.toString()}`)
@@ -379,61 +384,96 @@ export default function OrdersPage() {
                   )}
                 </div>
               )}
+            </div>
+          </Card>
+
+          <Card>
+            <div style={{ padding: 5 }}>
+              <Text variant="headingMd" as="h2">
+                Orders Filter
+              </Text>
+
               <div style={{ marginTop: 16 }}>
-                <ChoiceList
-                  title="Order status"
-                  choices={[
-                    { label: "All orders", value: "all" },
-                    { label: "Fulfilled only", value: "fulfilled" },
-                    { label: "Unfulfilled only", value: "unfulfilled" },
-                  ]}
-                  selected={[orderFilter]}
-                  onChange={(value) =>
-                    setOrderFilter(
-                      value[0] as "all" | "fulfilled" | "unfulfilled",
-                    )
-                  }
+                <Checkbox
+                  label="Enable Filter"
+                  checked={enableFilter}
+                  onChange={setEnableFilter}
                 />
               </div>
 
-              <div style={{ marginTop: 20 }}>
-                <Button
-                  fullWidth
-                  variant="primary"
-                  disabled={saving}
-                  onClick={async () => {
-                    if (!validateForm()) return;
-                    setSaving(true);
-                    try {
-                      await fetch("/api/schedule", {
-                        method: "POST",
-                        headers: {
-                          "Content-Type": "application/json",
-                        },
-                        body: JSON.stringify({
-                          enabled,
-                          frequency,
-                          scheduleTime,
-                          repeatEvery,
-                          runDays: runDay ? [runDay] : [],
-                          monthlyType,
-                          orderFilter,
-                          specificDate,
-                          dayPattern,
-                          weekPattern,
-                        }),
-                      });
-                      revalidator.revalidate();
-                    } finally {
-                      setSaving(false);
-                    }
-                  }}
-                >
-                  Save Schedule
-                </Button>
-              </div>
+              {enableFilter && (
+                <div>
+                  <div style={{ marginTop: 16 }}>
+                    <ChoiceList
+                      title="Order status"
+                      choices={[
+                        { label: "All orders", value: "all" },
+                        { label: "Fulfilled only", value: "fulfilled" },
+                        { label: "Unfulfilled only", value: "unfulfilled" },
+                      ]}
+                      selected={[orderFilter]}
+                      onChange={(value) =>
+                        setOrderFilter(
+                          value[0] as "all" | "fulfilled" | "unfulfilled",
+                        )
+                      }
+                    />
+                  </div>
+                  <div style={{ marginTop: 16 }}>
+                    <ChoiceList
+                      title="Payment status"
+                      choices={[
+                        { label: "All Orders", value: "all" },
+                        { label: "Paid Only", value: "paid" },
+                        { label: "Pending Only", value: "pending" },
+                      ]}
+                      selected={[paymentStatus]}
+                      onChange={(value) =>
+                        setPaymentStatus(value[0] as "all" | "paid" | "pending")
+                      }
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           </Card>
+          <div style={{ marginTop: 20, marginBottom: 20 }}>
+            <Button
+              fullWidth
+              variant="primary"
+              disabled={saving}
+              onClick={async () => {
+                if (!validateForm()) return;
+                setSaving(true);
+                try {
+                  await fetch("/api/schedule", {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                      enabled,
+                      frequency,
+                      scheduleTime,
+                      repeatEvery,
+                      runDays: runDay ? [runDay] : [],
+                      monthlyType,
+                      orderFilter,
+                      paymentStatus,
+                      specificDate,
+                      dayPattern,
+                      weekPattern,
+                    }),
+                  });
+                  revalidator.revalidate();
+                } finally {
+                  setSaving(false);
+                }
+              }}
+            >
+              Save Schedule
+            </Button>
+          </div>
         </div>
 
         {/* RIGHT PANEL */}
@@ -493,84 +533,92 @@ export default function OrdersPage() {
           <br />
 
           <Card>
-            {!schedule && (
+            {!schedule ? (
               <Text as="h1" tone="subdued">
                 Create a schedule to view filtered orders.
               </Text>
-            )}
-
-            {loading ? (
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "center",
-                  padding: 40,
-                }}
-              >
-                <Spinner accessibilityLabel="Loading orders" size="large" />
-              </div>
             ) : (
               <div>
-                <IndexTable
-                  resourceName={{ singular: "order", plural: "orders" }}
-                  itemCount={orders.length}
-                  selectable={false}
-                  headings={[
-                    { title: "Order" },
-                    { title: "Date" },
-                    { title: "Customer" },
-                    { title: "Total" },
-                    { title: "Payment status" },
-                    { title: "Fulfillment" },
-                    { title: "Items" },
-                  ]}
-                >
-                  {orders.map((order, index) => (
-                    <IndexTable.Row
-                      id={String(order.id)}
-                      key={order.id}
-                      position={index}
-                    >
-                      <IndexTable.Cell>
-                        <Text as="span" fontWeight="bold">
-                          {order.name}
-                        </Text>
-                      </IndexTable.Cell>
+                {loading ? (
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "center",
+                      padding: 40,
+                    }}
+                  >
+                    <Spinner accessibilityLabel="Loading orders" size="large" />
+                  </div>
+                ) : (
+                  <div>
+                    {orders.length === 0 ? (
+                      <div>No Any Orders Found For this Period or Filter</div>
+                    ) : (
+                      <IndexTable
+                        resourceName={{ singular: "order", plural: "orders" }}
+                        itemCount={orders.length}
+                        selectable={false}
+                        headings={[
+                          { title: "Order" },
+                          { title: "Date" },
+                          { title: "Customer" },
+                          { title: "Total" },
+                          { title: "Payment status" },
+                          { title: "Fulfillment" },
+                          { title: "Items" },
+                        ]}
+                      >
+                        {orders.map((order, index) => (
+                          <IndexTable.Row
+                            id={String(order.id)}
+                            key={order.id}
+                            position={index}
+                          >
+                            <IndexTable.Cell>
+                              <Text as="span" fontWeight="bold">
+                                {order.name}
+                              </Text>
+                            </IndexTable.Cell>
 
-                      <IndexTable.Cell>
-                        {new Date(order.created_at).toLocaleString()}
-                      </IndexTable.Cell>
+                            <IndexTable.Cell>
+                              {new Date(order.created_at).toLocaleString()}
+                            </IndexTable.Cell>
 
-                      <IndexTable.Cell>
-                        {order.customer
-                          ? `${order.customer.first_name ?? ""} ${order.customer.last_name ?? ""}`
-                          : "No customer"}
-                      </IndexTable.Cell>
+                            <IndexTable.Cell>
+                              {order.customer
+                                ? `${order.customer.first_name ?? ""} ${order.customer.last_name ?? ""}`
+                                : "No customer"}
+                            </IndexTable.Cell>
 
-                      <IndexTable.Cell>
-                        ${order.current_total_price}
-                      </IndexTable.Cell>
+                            <IndexTable.Cell>
+                              ${order.current_total_price}
+                            </IndexTable.Cell>
 
-                      <IndexTable.Cell>
-                        <Badge>{order.financial_status}</Badge>
-                      </IndexTable.Cell>
+                            <IndexTable.Cell>
+                              <Badge>{order.financial_status}</Badge>
+                            </IndexTable.Cell>
 
-                      <IndexTable.Cell>
-                        <Badge
-                          tone={
-                            order.fulfillment_status ? "success" : "attention"
-                          }
-                        >
-                          {order.fulfillment_status ?? "Unfulfilled"}
-                        </Badge>
-                      </IndexTable.Cell>
+                            <IndexTable.Cell>
+                              <Badge
+                                tone={
+                                  order.fulfillment_status
+                                    ? "success"
+                                    : "attention"
+                                }
+                              >
+                                {order.fulfillment_status ?? "Unfulfilled"}
+                              </Badge>
+                            </IndexTable.Cell>
 
-                      <IndexTable.Cell>
-                        {order.line_items.length} item
-                      </IndexTable.Cell>
-                    </IndexTable.Row>
-                  ))}
-                </IndexTable>
+                            <IndexTable.Cell>
+                              {order.line_items.length} item
+                            </IndexTable.Cell>
+                          </IndexTable.Row>
+                        ))}
+                      </IndexTable>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </Card>

@@ -8,6 +8,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const start = url.searchParams.get("start");
   const end = url.searchParams.get("end");
   const filter = url.searchParams.get("filter") ?? "all";
+  const payment = url.searchParams.get("payment") ?? "all";
 
   const client = new shopifyback.clients.Rest({ session });
 
@@ -30,6 +31,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   if (filter === "unfulfilled") {
     query.fulfillment_status = "unfulfilled";
+  }
+
+  if (payment === "paid") {
+    query.financial_status = "paid";
+  }
+
+  if (payment === "pending") {
+    query.financial_status = "pending";
   }
 
   const response = await client.get({

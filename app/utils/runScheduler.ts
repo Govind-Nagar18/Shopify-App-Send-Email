@@ -56,6 +56,14 @@ export async function runScheduler() {
       query.fulfillment_status = "unfulfilled";
     }
 
+    if (schedule.paymentStatus === "paid") {
+      query.financial_status = "paid";
+    }
+
+    if (schedule.paymentStatus === "pending") {
+      query.financial_status = "pending";
+    }
+
     return query;
   }
 
@@ -165,6 +173,7 @@ export async function runScheduler() {
       orders.length > 0 ? await generateOrdersExcel(orders) : null;
 
     await sendOrdersEmail(schedule.email, schedule.shop, excelBuffer);
+    console.log("Email Send Successfully");
   }
 
   return schedules;

@@ -17,7 +17,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     specificDate,
     dayPattern,
     weekPattern,
-    orderFilter
+    orderFilter,
+    paymentStatus,
   } = requestBody;
 
   const now = new Date();
@@ -184,6 +185,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       isEnabled: enabled,
       frequency,
       orderFilter,
+      paymentStatus,
       repeatEvery: Number(repeatEvery),
       runDays: runDays?.length ? JSON.stringify(runDays) : null,
       monthlyType: frequency === "monthly" ? monthlyType : null,
@@ -208,6 +210,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       isEnabled: enabled,
       frequency,
       orderFilter,
+      paymentStatus,
       repeatEvery: Number(repeatEvery),
       runDays: runDays?.length ? JSON.stringify(runDays) : null,
       monthlyType,

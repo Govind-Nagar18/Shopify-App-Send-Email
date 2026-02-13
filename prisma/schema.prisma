@@ -45,12 +45,13 @@ model EmailSchedule {
   runDays       String?  
 
   monthlyType   String?  
-  specificDate  Int?      
+  specificDate  Int? 
 
   dayPattern    String?   
   weekPattern   String?
 
   orderFilter   String  @default("all")
+  paymentStatus String?     
 
   lastRunAt     DateTime?
   nextRunAt     DateTime?   
