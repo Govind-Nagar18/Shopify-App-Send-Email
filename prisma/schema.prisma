@@ -35,8 +35,9 @@ model Session {
 
 model EmailSchedule {
   id            String   @id @default(uuid())
-  shop          String   @unique
+  shop          String   
   email         String
+  name          String
   isEnabled     Boolean  @default(true)
 
   frequency     String
@@ -51,7 +52,11 @@ model EmailSchedule {
   weekPattern   String?
 
   orderFilter   String  @default("all")
-  paymentStatus String?     
+  paymentStatus String?
+
+  minOrderValue Int?
+  minItems      Int?
+  orderTags     String?     
 
   lastRunAt     DateTime?
   nextRunAt     DateTime?   

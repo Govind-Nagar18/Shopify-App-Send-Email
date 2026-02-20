@@ -1,21 +1,10 @@
-import {
-  Card,
-  Text,
-  Button,
-  TextField,
-  Select,
-  Checkbox,
-  ChoiceList,
-} from "@shopify/polaris";
-import {
-  useRevalidator,
-} from "react-router";
+import { useRevalidator, useNavigate } from "react-router";
 import { useState } from "react";
-
-
+import "./schedule-config.css";
+  
 export default function ScheduleConfig() {
   const revalidator = useRevalidator();
-  
+  const navigate = useNavigate();
 
   const [enabled, setEnabled] = useState(true);
   const [frequency, setFrequency] = useState("daily");
@@ -27,14 +16,13 @@ export default function ScheduleConfig() {
   const [weekPattern, setWeekPattern] = useState("Sunday");
 
   const [repeatEvery, setRepeatEvery] = useState("1");
-  const [runDay, setRunDay] = useState<string>("Mon");
+  const [runDay, setRunDay] = useState<string>("");
 
   const [scheduleTime, setScheduleTime] = useState("10:00");
 
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const [saving, setSaving] = useState(false);
-  const [enableFilter, setEnableFilter] = useState(false);
   const [orderFilter, setOrderFilter] = useState<
     "all" | "fulfilled" | "unfulfilled"
   >("all");
@@ -45,44 +33,6 @@ export default function ScheduleConfig() {
   const [minItem, setMinItem] = useState<number | null>(null);
 
   const [orderTags, setOrderTags] = useState<string[]>([]);
-  const [customerTags, setCustomerTags] = useState<string[]>([]);
-
-  function renderScheduleSummary(schedule: any) {
-    if (!schedule) return <Text as="p">No schedule configured</Text>;
-
-    switch (schedule.frequency) {
-      case "daily":
-        return (
-          <Text as="p">
-            Runs daily at {schedule.scheduleTime || "--"} (24hr)
-          </Text>
-        );
-
-      case "weekly": {
-        const day = schedule.runDays ? JSON.parse(schedule.runDays)[0] : "--";
-        return <Text as="p">Runs weekly on {day}</Text>;
-      }
-
-      case "monthly":
-        if (schedule.monthlyType === "date") {
-          return <Text as="p">Runs monthly on: {schedule.nextRunAt}</Text>;
-        }
-
-        if (schedule.monthlyType === "weekday") {
-          return (
-            <Text as="p">
-              Runs monthly on {schedule.dayPattern} {schedule.weekPattern}
-            </Text>
-          );
-        }
-
-        return <Text as="p">Runs monthly</Text>;
-
-      default:
-        return <Text as="p">Schedule not configured</Text>;
-    }
-  }
-
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
 
@@ -123,259 +73,226 @@ export default function ScheduleConfig() {
   };
 
   return (
-    <div style={{ width: 320 }}>
-      <Card>
-        <div style={{ padding: 16 }}>
-          <Text variant="headingMd" as="h2">
-            Schedule Report
-          </Text>
+    <div className="schedule-wrapper">
+      {/* Schedule */}
+      <div className="section">
+        <h2>Schedule</h2>
 
-          <div style={{ marginTop: 16 }}>
-            <Checkbox
-              label="Enable schedule"
-              checked={enabled}
-              onChange={setEnabled}
-            />
+        {/* Frequency Tabs */}
+        <div className="form-row">
+          <label htmlFor="daily">When</label>
+          <div className="tabs">
+            {["hourly","daily", "weekly", "monthly"].map((f) => (
+              <button
+                key={f}
+                className={frequency === f ? "active" : ""}
+                onClick={() => setFrequency(f)}
+              >
+                {f.charAt(0).toUpperCase() + f.slice(1)}
+              </button>
+            ))}
           </div>
+        </div>
 
-          <div style={{ marginTop: 16 }}>
-            <Select
-              label="Repeat"
-              options={[
-                { label: "Daily", value: "daily" },
-                { label: "Weekly", value: "weekly" },
-                { label: "Monthly", value: "monthly" },
-              ]}
-              value={frequency}
-              onChange={(value) => setFrequency(value)}
-            />
-          </div>
-
-          <div style={{ marginTop: 16 }}>
-            <TextField
-              label="Run time"
-              type="time"
-              value={scheduleTime || "--:--"}
-              error={errors.scheduleTime}
-              onChange={setScheduleTime}
-              autoComplete="off"
-            />
-          </div>
-
-          <div style={{ marginTop: 16 }}>
-            <TextField
-              label="Repeat every"
-              type="number"
-              value={repeatEvery}
-              error={errors.repeatEvery}
-              onChange={setRepeatEvery}
-              autoComplete="off"
-            />
-          </div>
-
-          {frequency === "weekly" && (
-            <div style={{ marginTop: 16 }}>
-              <ChoiceList
-                title="Run on"
-                choices={[
-                  { label: "Sunday", value: "Sun" },
-                  { label: "Monday", value: "Mon" },
-                  { label: "Tuesday", value: "Tue" },
-                  { label: "Wednesday", value: "Wed" },
-                  { label: "Thursday", value: "Thu" },
-                  { label: "Friday", value: "Fri" },
-                  { label: "Saturday", value: "Sat" },
-                ]}
-                selected={[runDay]}
-                onChange={(value) => setRunDay(value[0])}
-              />
-              {errors.runDay && (
-                <Text as="p" tone="critical">
-                  {errors.runDay}
-                </Text>
-              )}
-            </div>
-          )}
-
-          {frequency === "monthly" && (
-            <div style={{ marginTop: 16 }}>
-              <ChoiceList
-                title="Monthly Type"
-                choices={[
-                  { label: "On a specific date", value: "date" },
-                  { label: "On a weekday pattern", value: "weekday" },
-                ]}
-                selected={[monthlyType]}
-                onChange={(value) =>
-                  setMonthlyType(value[0] as "date" | "weekday")
-                }
-              />
-
-              {/* Specific Date */}
-              {monthlyType === "date" && (
-                <div style={{ marginTop: 12 }}>
-                  <Select
-                    label="Select Date"
-                    options={Array.from({ length: 31 }, (_, i) => ({
-                      label: `${i + 1}`,
-                      value: String(i + 1),
-                    }))}
-                    value={specificDate}
-                    error={errors.specificDate}
-                    onChange={setSpecificDate}
-                  />
-                </div>
-              )}
-
-              {/* Weekday Pattern */}
-              {monthlyType === "weekday" && (
-                <div style={{ marginTop: 12 }}>
-                  <Select
-                    label="Day pattern"
-                    options={[
-                      { label: "First", value: "First" },
-                      { label: "Second", value: "Second" },
-                      { label: "Third", value: "Third" },
-                      { label: "Fourth", value: "Fourth" },
-                      { label: "Last", value: "Last" },
-                    ]}
-                    value={dayPattern}
-                    error={errors.dayPattern}
-                    onChange={setDayPattern}
-                  />
-
-                  <div style={{ marginTop: 12 }}>
-                    <Select
-                      label="Week pattern"
-                      options={[
-                        { label: "Sunday", value: "Sunday" },
-                        { label: "Monday", value: "Monday" },
-                        { label: "Tuesday", value: "Tuesday" },
-                        { label: "Wednesday", value: "Wednesday" },
-                        { label: "Thursday", value: "Thursday" },
-                        { label: "Friday", value: "Friday" },
-                        { label: "Saturday", value: "Saturday" },
-                      ]}
-                      value={weekPattern}
-                      error={errors.weekPattern}
-                      onChange={setWeekPattern}
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
+        {/* Repeat every (ALL frequencies) */}
+        <div className="form-row">
+          <label htmlFor="repeatEvery">Repeat every</label>
+          <input
+            id="repeatEvery"
+            type="number"
+            value={repeatEvery}
+            onChange={(e) => setRepeatEvery(e.target.value)}
+          />
+          {errors.repeatEvery && (
+            <div className="error">{errors.repeatEvery}</div>
           )}
         </div>
-      </Card>
 
-      <Card>
-        <div style={{ padding: 5 }}>
-          <Text variant="headingMd" as="h2">
-            Orders Filter
-          </Text>
-
-          <div style={{ marginTop: 16 }}>
-            <Checkbox
-              label="Enable Filter"
-              checked={enableFilter}
-              onChange={setEnableFilter}
-            />
+        {/* Weekly */}
+        {frequency === "weekly" && (
+          <div className="form-row">
+            <label htmlFor="runDay">Every</label>
+            <select
+              id="runDay"
+              value={runDay}
+              onChange={(e) => setRunDay(e.target.value)}
+            >
+              <option value="">Select Day</option>
+              <option value="Sun">Sunday</option>
+              <option value="Mon">Monday</option>
+              <option value="Tue">Tuesday</option>
+              <option value="Wed">Wednesday</option>
+              <option value="Thu">Thursday</option>
+              <option value="Fri">Friday</option>
+              <option value="Sat">Saturday</option>
+            </select>
+            {errors.runDay && <div className="error">{errors.runDay}</div>}
           </div>
+        )}
 
-          {enableFilter && (
-            <div>
-              <div style={{ marginTop: 16 }}>
-                <ChoiceList
-                  title="Order status"
-                  choices={[
-                    { label: "All orders", value: "all" },
-                    { label: "Fulfilled only", value: "fulfilled" },
-                    { label: "Unfulfilled only", value: "unfulfilled" },
-                  ]}
-                  selected={[orderFilter]}
-                  onChange={(value) =>
-                    setOrderFilter(
-                      value[0] as "all" | "fulfilled" | "unfulfilled",
-                    )
-                  }
-                />
-              </div>
-              <div style={{ marginTop: 16 }}>
-                <ChoiceList
-                  title="Payment status"
-                  choices={[
-                    { label: "All Orders", value: "all" },
-                    { label: "Paid Only", value: "paid" },
-                    { label: "Pending Only", value: "pending" },
-                  ]}
-                  selected={[paymentStatus]}
-                  onChange={(value) =>
-                    setPaymentStatus(value[0] as "all" | "paid" | "pending")
-                  }
-                />
-              </div>
-              <div style={{ marginTop: 16 }}>
-                <ChoiceList
-                  title="Min Order Value"
-                  choices={[
-                    { label: "$10,000+", value: "10000" },
-                    { label: "$5,000+", value: "5000" },
-                    { label: "$3,000+", value: "3000" },
-                    { label: "$2,000+", value: "2000" },
-                  ]}
-                  selected={minPrice ? [String(minPrice)] : []}
-                  onChange={(value) => setMinPrice(Number(value[0]))}
-                />
-              </div>
-              <div style={{ marginTop: 16 }}>
-                <ChoiceList
-                  title="Min Items"
-                  choices={[
-                    { label: "10+", value: "10" },
-                    { label: "7+", value: "7" },
-                    { label: "5+", value: "5" },
-                    { label: "3+", value: "3" },
-                    { label: "1+", value: "1" },
-                  ]}
-                  selected={minItem ? [String(minItem)] : []}
-                  onChange={(value) => setMinItem(Number(value[0]))}
-                />
-              </div>
-              <div style={{ marginTop: 16 }}>
-                <ChoiceList
-                  title="Order Tags"
-                  allowMultiple
-                  choices={[
-                    { label: "Wear", value: "wear" },
-                    { label: "Fashion", value: "fashion" },
-                    { label: "Style", value: "style" },
-                    { label: "Regular", value: "regular" },
-                  ]}
-                  selected={orderTags}
-                  onChange={setOrderTags}
-                />
-              </div>
-              <div style={{ marginTop: 16 }}>
-                <ChoiceList
-                  title="Customer Tags"
-                  allowMultiple
-                  choices={[
-                    { label: "VIP", value: "vip" },
-                    { label: "Wholesale", value: "wholesale" },
-                    { label: "Regular", value: "regular" },
-                  ]}
-                  selected={customerTags}
-                  onChange={setCustomerTags}
-                />
-              </div>
+        {/* Monthly type */}
+        {frequency === "monthly" && (
+          <div className="form-row">
+            <label htmlFor="monthlyType">Monthly type</label>
+            <select
+              id="monthlyType"
+              value={monthlyType}
+              onChange={(e) =>
+                setMonthlyType(e.target.value as "date" | "weekday")
+              }
+            >
+              <option value="date">On a specific date</option>
+              <option value="weekday">On a weekday pattern</option>
+            </select>
+          </div>
+        )}
+
+        {/* Monthly – Specific date */}
+        {frequency === "monthly" && monthlyType === "date" && (
+          <div className="form-row">
+            <label htmlFor="specificDate" >Select date</label>
+            <select id="specificDate"
+              value={specificDate}
+              onChange={(e) => setSpecificDate(e.target.value)}
+            >
+              {Array.from({ length: 31 }, (_, i) => (
+                <option key={i + 1} value={String(i + 1)}>
+                  {i + 1}
+                </option>
+              ))}
+            </select>
+            {errors.specificDate && (
+              <div className="error">{errors.specificDate}</div>
+            )}
+          </div>
+        )}
+
+        {/* Monthly – Weekday pattern */}
+        {frequency === "monthly" && monthlyType === "weekday" && (
+          <>
+            <div className="form-row">
+              <label htmlFor="dayPattern">Day pattern</label>
+              <select id="dayPattern"
+                value={dayPattern}
+                onChange={(e) => setDayPattern(e.target.value)}
+              >
+                <option value="First">First</option>
+                <option value="Second">Second</option>
+                <option value="Third">Third</option>
+                <option value="Fourth">Fourth</option>
+                <option value="Last">Last</option>
+              </select>
+              {errors.dayPattern && (
+                <div className="error">{errors.dayPattern}</div>
+              )}
             </div>
+
+            <div className="form-row">
+              <label htmlFor="weekPattern" >Weekday</label>
+              <select id="weekPattern"
+                value={weekPattern}
+                onChange={(e) => setWeekPattern(e.target.value)}
+              >
+                <option value="Sunday">Sunday</option>
+                <option value="Monday">Monday</option>
+                <option value="Tuesday">Tuesday</option>
+                <option value="Wednesday">Wednesday</option>
+                <option value="Thursday">Thursday</option>
+                <option value="Friday">Friday</option>
+                <option value="Saturday">Saturday</option>
+              </select>
+              {errors.weekPattern && (
+                <div className="error">{errors.weekPattern}</div>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* Time (ALL frequencies) */}
+        <div className="form-row">
+          <label htmlFor="time" >At</label>
+          <input id="time"
+            type="time"
+            value={scheduleTime}
+            onChange={(e) => setScheduleTime(e.target.value)}
+          />
+          {errors.scheduleTime && (
+            <div className="error">{errors.scheduleTime}</div>
           )}
         </div>
-      </Card>
-      <div style={{ marginTop: 20, marginBottom: 20 }}>
-        <Button
-          fullWidth
-          variant="primary"
+      </div>
+
+      {/* Filters */}
+      <div className="section">
+        <h2>Order Filters</h2>
+
+        <div className="filter-grid">
+          <div className="choice-group">
+            <label htmlFor="orderFilter" >Order status</label>
+            <select id="orderFilter"
+              value={orderFilter}
+              onChange={(e) => setOrderFilter(e.target.value as any)}
+            >
+              <option value="all">All</option>
+              <option value="fulfilled">Fulfilled</option>
+              <option value="unfulfilled">Unfulfilled</option>
+            </select>
+          </div>
+
+          <div className="choice-group">
+            <label htmlFor="paymentStatus">Payment status</label>
+            <select id="paymentStatus"
+              value={paymentStatus}
+              onChange={(e) => setPaymentStatus(e.target.value as any)}
+            >
+              <option value="all">All</option>
+              <option value="paid">Paid</option>
+              <option value="pending">Pending</option>
+            </select>
+          </div>
+
+          <div className="choice-group">
+            <label htmlFor="setMinPrice" >Min order value</label>
+            <select id="setMinPrice" onChange={(e) => setMinPrice(Number(e.target.value))}>
+              <option value="">Any</option>
+              <option value="10000">$10,000+</option>
+              <option value="5000">$5,000+</option>
+              <option value="3000">$3,000+</option>
+              <option value="2000">$2,000+</option>
+            </select>
+          </div>
+
+          <div className="choice-group">
+            <label htmlFor="minItems" >Min items</label>
+            <select id="minItems" onChange={(e) => setMinItem(Number(e.target.value))}>
+              <option value="">Any</option>
+              <option value="10">10+</option>
+              <option value="7">7+</option>
+              <option value="5">5+</option>
+              <option value="3">3+</option>
+              <option value="1">1+</option>
+            </select>
+          </div>
+
+          <div className="choice-group">
+            <label htmlFor="orderTags" >Order tags</label>
+            <select id="orderTags"
+              value={orderTags[0] || ""}
+              onChange={(e) => setOrderTags([e.target.value])}
+            >
+              <option value="">Any</option>
+              <option value="wear">Wear</option>
+              <option value="fashion">Fashion</option>
+              <option value="style">Style</option>
+              <option value="regular">Regular</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Save */}
+      <div className="save-bar">
+        <button
           disabled={saving}
           onClick={async () => {
             if (!validateForm()) return;
@@ -391,28 +308,83 @@ export default function ScheduleConfig() {
                   frequency,
                   scheduleTime,
                   repeatEvery,
-                  runDays: runDay ? [runDay] : [],
-                  monthlyType,
+
+                  runDays: frequency === "weekly" && runDay ? [runDay] : [],
+
+                  monthlyType: frequency === "monthly" ? monthlyType : null,
+
+                  specificDate:
+                    frequency === "monthly" && monthlyType === "date"
+                      ? specificDate
+                      : null,
+
+                  dayPattern:
+                    frequency === "monthly" && monthlyType === "weekday"
+                      ? dayPattern
+                      : null,
+
+                  weekPattern:
+                    frequency === "monthly" && monthlyType === "weekday"
+                      ? weekPattern
+                      : null,
+
                   orderFilter,
                   paymentStatus,
                   minOrderValue: minPrice,
                   minItems: minItem,
                   orderTags,
-                  customerTags,
-                  specificDate,
-                  dayPattern,
-                  weekPattern,
                 }),
               });
               revalidator.revalidate();
             } finally {
               setSaving(false);
             }
+            navigate('/app/orders')
           }}
         >
-          Save Schedule
-        </Button>
+          Save
+        </button>
       </div>
     </div>
   );
+}
+
+export async function ApplyFilter() {
+  await fetch("/api/schedule", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  enabled,
+                  frequency,
+                  scheduleTime,
+                  repeatEvery,
+
+                  runDays: frequency === "weekly" && runDay ? [runDay] : [],
+
+                  monthlyType: frequency === "monthly" ? monthlyType : null,
+
+                  specificDate:
+                    frequency === "monthly" && monthlyType === "date"
+                      ? specificDate
+                      : null,
+
+                  dayPattern:
+                    frequency === "monthly" && monthlyType === "weekday"
+                      ? dayPattern
+                      : null,
+
+                  weekPattern:
+                    frequency === "monthly" && monthlyType === "weekday"
+                      ? weekPattern
+                      : null,
+
+                  orderFilter,
+                  paymentStatus,
+                  minOrderValue: minPrice,
+                  minItems: minItem,
+                  orderTags,
+                }),
+              });
 }

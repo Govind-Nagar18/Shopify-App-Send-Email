@@ -19,6 +19,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     weekPattern,
     orderFilter,
     paymentStatus,
+    minOrderValue,
+    minItems,
+    orderTags,
   } = requestBody;
 
   const now = new Date();
@@ -95,61 +98,78 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   function calculateNextRun(): Date | null {
     const base = new Date(now);
 
-    // DAILY
+    if (frequency === "hourly") {
+      const next = new Date(base);
+      applyTime(next, scheduleTime);
+
+      while (next <= now) {
+        next.setHours(next.getHours() + Number(repeatEvery));
+      }
+      return next;
+    }
+
     if (frequency === "daily") {
       const next = new Date(base);
       applyTime(next, scheduleTime);
 
-      if (next <= now) {
+      while (next <= now) {
         next.setDate(next.getDate() + Number(repeatEvery));
       }
       return next;
     }
 
-    // WEEKLY
-    if (frequency === "weekly" && runDays?.length) {
-      const parsedDays: string[] = runDays;
-      const dayMap = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    if (frequency === "weekly" && Array.isArray(runDays) && runDays.length) {
+      const dayMap: Record<string, number> = {
+        Sun: 0,
+        Mon: 1,
+        Tue: 2,
+        Wed: 3,
+        Thu: 4,
+        Fri: 5,
+        Sat: 6,
+      };
 
-      const next = new Date(base);
+      const repeatWeeks = Number(repeatEvery);
 
-      for (let i = 0; i < 90; i++) {
-        // look ahead 90 days
-        const diffTime = next.getTime() - now.getTime();
-        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-        const weeksPassed = Math.floor(diffDays / 7);
+      const anchor = new Date(base);
+      anchor.setHours(0, 0, 0, 0);
+      anchor.setDate(anchor.getDate() - anchor.getDay());
 
-        const todayName = dayMap[next.getDay()];
+      for (let interval = 1; interval <= 52; interval++) {
+        const intervalStart = new Date(anchor);
+        intervalStart.setDate(anchor.getDate() + interval * repeatWeeks * 7);
 
-        if (
-          parsedDays.includes(todayName) &&
-          weeksPassed % Number(repeatEvery) === 0
-        ) {
-          applyTime(next, scheduleTime);
+        for (const day of runDays) {
+          const target = new Date(intervalStart);
+          target.setDate(
+            intervalStart.getDate() +
+              ((dayMap[day] - intervalStart.getDay() + 7) % 7),
+          );
 
-          if (next > now) {
-            return next;
+          applyTime(target, scheduleTime);
+
+          if (target > now) {
+            return target;
           }
         }
-
-        next.setDate(next.getDate() + 1);
       }
     }
 
-    // MONTHLY
     if (frequency === "monthly") {
-      const next = new Date(base);
+      const repeatMonths = Number(repeatEvery);
+      const cursor = new Date(base);
 
-      for (let i = 0; i < 24; i++) {
-        // look ahead 24 months
-        const year = next.getFullYear();
-        const month = next.getMonth();
+      cursor.setDate(1);
+
+      for (let i = 0; i < 36; i += repeatMonths) {
+        const year = cursor.getFullYear();
+        const month = cursor.getMonth();
 
         let executionDate: number | null = null;
 
         if (monthlyType === "date" && specificDate) {
           const lastDay = getLastDayOfMonth(year, month);
-          executionDate = specificDate > lastDay ? lastDay : specificDate;
+          executionDate = Math.min(specificDate, lastDay);
         }
 
         if (monthlyType === "weekday" && dayPattern && weekPattern) {
@@ -170,57 +190,85 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           }
         }
 
-        next.setMonth(next.getMonth() + Number(repeatEvery));
+        cursor.setMonth(cursor.getMonth() + repeatMonths);
       }
     }
+
     return null;
   }
 
+  const normalizedRunDays =
+    frequency === "weekly" && Array.isArray(runDays)
+      ? JSON.stringify(runDays)
+      : null;
+
   const nextRun = calculateNextRun();
 
-  await prisma.emailSchedule.upsert({
-    where: { shop },
-    update: {
-      email: shopEmail,
-      isEnabled: enabled,
-      frequency,
-      orderFilter,
-      paymentStatus,
-      repeatEvery: Number(repeatEvery),
-      runDays: runDays?.length ? JSON.stringify(runDays) : null,
-      monthlyType: frequency === "monthly" ? monthlyType : null,
-      specificDate:
-        frequency === "monthly" && monthlyType === "date"
-          ? Number(specificDate)
-          : null,
-      dayPattern:
-        frequency === "monthly" && monthlyType === "weekday"
-          ? dayPattern
-          : null,
-      weekPattern:
-        frequency === "monthly" && monthlyType === "weekday"
-          ? weekPattern
-          : null,
-      scheduleTime,
-      nextRunAt: enabled ? nextRun : null,
-    },
-    create: {
-      shop,
-      email: shopEmail,
-      isEnabled: enabled,
-      frequency,
-      orderFilter,
-      paymentStatus,
-      repeatEvery: Number(repeatEvery),
-      runDays: runDays?.length ? JSON.stringify(runDays) : null,
-      monthlyType,
-      specificDate: specificDate ? Number(specificDate) : null,
-      dayPattern,
-      weekPattern,
-      scheduleTime,
-      nextRunAt: nextRun,
-    },
-  });
+  if (enabled && !nextRun) {
+    throw new Error("Unable to calculate next run date");
+  }
+
+  const url = new URL(request.url);
+  const scheduleId = url.searchParams.get("scheduleId");
+
+  if (scheduleId) {
+    await prisma.emailSchedule.update({
+      where: {
+        id: scheduleId,
+        shop,
+      },
+      data: {
+        email: shopEmail,
+        isEnabled: enabled,
+        frequency,
+        orderFilter,
+        paymentStatus,
+        minOrderValue,
+        minItems,
+        orderTags: orderTags?.length ? orderTags.join(",") : null,
+        repeatEvery: Number(repeatEvery),
+        runDays: normalizedRunDays,
+        monthlyType: frequency === "monthly" ? monthlyType : null,
+        specificDate:
+          frequency === "monthly" && monthlyType === "date"
+            ? Number(specificDate)
+            : null,
+        dayPattern:
+          frequency === "monthly" && monthlyType === "weekday"
+            ? dayPattern
+            : null,
+        weekPattern:
+          frequency === "monthly" && monthlyType === "weekday"
+            ? weekPattern
+            : null,
+        scheduleTime,
+        nextRunAt: enabled ? nextRun : null,
+      },
+    });
+  } else {
+    await prisma.emailSchedule.create({
+      data: {
+        shop,
+        email: shopEmail,
+        isEnabled: enabled,
+        frequency,
+        orderFilter,
+        paymentStatus,
+        minOrderValue,
+        minItems,
+        orderTags: orderTags?.length ? orderTags.join(",") : null,
+        repeatEvery: Number(repeatEvery),
+        runDays: normalizedRunDays,
+        monthlyType,
+        specificDate: specificDate ? Number(specificDate) : null,
+        dayPattern,
+        weekPattern,
+        scheduleTime,
+        nextRunAt: nextRun,
+        name: `Orders – ${frequency} – ${new Date().toLocaleString()}`,
+      },
+    });
+  }
 
   return { success: true };
 };
